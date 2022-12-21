@@ -1,17 +1,16 @@
 lockfileVersion: 5.4
 
-overrides:
-  '@types/node': 18.11.15
+importers:
 
-specifiers:
-  botframework-connector: 4.16.0
-  karma-typescript: 5.5.3
-  lodash: 4.17.21
-
-dependencies:
-  botframework-connector: 4.16.0
-  karma-typescript: 5.5.3
-  lodash: 4.17.21
+  .:
+    specifiers:
+      botframework-connector: 4.16.0
+      karma-typescript: 5.5.3
+      lodash: 4.17.21
+    dependencies:
+      botframework-connector: 4.16.0
+      karma-typescript: 5.5.3
+      lodash: 4.17.21
 
 packages:
 
@@ -423,6 +422,10 @@ packages:
       '@types/node': 18.11.15
     dev: false
 
+  /@types/node/10.17.60:
+    resolution: {integrity: sha512-F0KIgDJfy2nA3zMLmWGKxcH2ZVEtCZXHHdOQs2gSaQ27+lNeEfGxzkIw90aXswATX7AZ33tahPbzy6KAfUreVw==}
+    dev: false
+
   /@types/node/18.11.15:
     resolution: {integrity: sha512-VkhBbVo2+2oozlkdHXLrb3zjsRkpdnaU2bXmX8Wgle3PUi569eLRaHGlgETQHR7lLL1w7GiG3h9SnePhxNDecw==}
     dev: false
@@ -571,7 +574,7 @@ packages:
       '@azure/identity': 2.0.0-beta.6
       '@azure/ms-rest-js': 1.9.1
       '@types/jsonwebtoken': 7.2.8
-      '@types/node': 18.11.15
+      '@types/node': 10.17.60
       adal-node: 0.2.3
       axios: 0.25.0
       base64url: 3.0.1
