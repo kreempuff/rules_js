@@ -22,12 +22,12 @@ globbing library used by [gazelle](https://github.com/bazelbuild/bazel-gazelle).
 for more information on supported globbing patterns.
 """
 
-_DOC = """A rule that packages sources into a directory (a tree artifact) and provides an `NpmPackageInfo`.
+_NPM_PACKAGE_DOC = """A rule that packages sources into a directory (a tree artifact) and provides an `NpmPackageInfo`.
 
 This target can be used as the `src` attribute to `npm_link_package`.
 
 `npm_package` makes use of `copy_to_directory`
-(https://docs.aspect.build/rules/aspect_bazel_lib/docs/copy_to_directoryd) under the hood,
+(https://docs.aspect.build/rules/aspect_bazel_lib/docs/copy_to_directory) under the hood,
 adopting its API and its copy action using composition. However, unlike `copy_to_directory`,
 npm_package includes `transitive_sources` and `transitive_declarations` files from `JsInfo` providers in srcs
 by default. The behavior of including sources and declarations from `JsInfo` can be configured
@@ -51,7 +51,7 @@ To stamp the current git tag as the "version" in the package.json file, see
 copy_to_directory_lib_attrs = dict(copy_to_directory_lib.attrs)
 copy_to_directory_lib_attrs.pop("exclude_prefixes")
 
-_ATTRS = dicts.add(copy_to_directory_lib_attrs, {
+_NPM_PACKAGE_ATTRS = dicts.add(copy_to_directory_lib_attrs, {
     "package": attr.string(
         doc = """The package name. If set, should match the `name` field in the `package.json` file for this package.
 
@@ -136,54 +136,30 @@ If unset, a npm_link_package that references this npm_package must define the pa
         linking with `npm_link_package`.
         """,
     ),
-    "include_sources": attr.bool(
-        doc = """When True, `sources` from `JsInfo` providers in data targets are included in the list of available files to copy.""",
-        default = True,
-    ),
-    "include_transitive_sources": attr.bool(
-        doc = """When True, `transitive_sources` from `JsInfo` providers in data targets are included in the list of available files to copy.""",
-        default = True,
-    ),
-    "include_declarations": attr.bool(
-        doc = """When True, `declarations` from `JsInfo` providers in data targets are included in the list of available files to copy.""",
-        default = True,
-    ),
-    "include_transitive_declarations": attr.bool(
-        doc = """When True, `transitive_declarations` from `JsInfo` providers in data targets are included in the list of available files to copy.""",
-        default = True,
-    ),
-    "include_runfiles": attr.bool(
-        doc = """When True, default runfiles from `srcs` targets are included in the list of available files to copy.
-
-This may be needed in a few cases:
-
-- to work-around issues with rules that don't provide everything needed in sources, transitive_sources, declarations & transitive_declarations
-- to depend on the runfiles targets that don't use JsInfo
-
-NB: The default value will be flipped to False in the next major release as runfiles are not needed in the general case
-and adding them to the list of files available to copy can add noticeable overhead to the analysis phase in a large
-repository with many npm_package targets.
-""",
-        # TODO(2.0): flip default to False
-        default = True,
-    ),
 })
 
-def _impl(ctx):
-    dst = ctx.actions.declare_directory(ctx.attr.out if ctx.attr.out else ctx.attr.name)
+_NPM_PACKAGE_FILES_ATTRS = {
+    "srcs": attr.label_list(allow_files = True),
+    "include_sources": attr.bool(),
+    "include_transitive_sources": attr.bool(),
+    "include_declarations": attr.bool(),
+    "include_transitive_declarations": attr.bool(),
+    "include_runfiles": attr.bool(),
+}
 
-    additional_files_depsets = []
+def _npm_package_files_impl(ctx):
+    files_depsets = []
 
     if ctx.attr.include_transitive_sources:
         # include all transitive sources (this includes direct sources)
-        additional_files_depsets.extend([
+        files_depsets.extend([
             target[JsInfo].transitive_sources
             for target in ctx.attr.srcs
             if JsInfo in target and hasattr(target[JsInfo], "transitive_sources")
         ])
     elif ctx.attr.include_sources:
         # include only direct sources
-        additional_files_depsets.extend([
+        files_depsets.extend([
             target[JsInfo].sources
             for target in ctx.attr.srcs
             if JsInfo in target and hasattr(target[JsInfo], "sources")
@@ -191,14 +167,14 @@ def _impl(ctx):
 
     if ctx.attr.include_transitive_declarations:
         # include all transitive declarations (this includes direct declarations)
-        additional_files_depsets.extend([
+        files_depsets.extend([
             target[JsInfo].transitive_declarations
             for target in ctx.attr.srcs
             if JsInfo in target and hasattr(target[JsInfo], "transitive_declarations")
         ])
     elif ctx.attr.include_declarations:
         # include only direct declarations
-        additional_files_depsets.extend([
+        files_depsets.extend([
             target[JsInfo].declarations
             for target in ctx.attr.srcs
             if JsInfo in target and hasattr(target[JsInfo], "declarations")
@@ -206,10 +182,17 @@ def _impl(ctx):
 
     if ctx.attr.include_runfiles:
         # include default runfiles from srcs
-        additional_files_depsets.extend([
+        files_depsets.extend([
             target[DefaultInfo].default_runfiles.files
             for target in ctx.attr.srcs
         ])
+
+    return DefaultInfo(
+        files = depset(transitive = files_depsets),
+    )
+
+def _npm_package_impl(ctx):
+    dst = ctx.actions.declare_directory(ctx.attr.out if ctx.attr.out else ctx.attr.name)
 
     # forward all npm_package_store_deps
     npm_package_store_deps = [
@@ -226,7 +209,7 @@ def _impl(ctx):
         name = ctx.attr.name,
         copy_to_directory_bin = ctx.toolchains["@aspect_bazel_lib//lib:copy_to_directory_toolchain_type"].copy_to_directory_info.bin,
         dst = dst,
-        files = ctx.files.srcs + depset(transitive = additional_files_depsets).to_list(),
+        files = ctx.files.srcs,
         targets = [t for t in ctx.attr.srcs if DirectoryPathInfo in t],
         root_paths = ctx.attr.root_paths,
         include_external_repositories = ctx.attr.include_external_repositories,
@@ -255,18 +238,81 @@ def _impl(ctx):
     ]
 
 npm_package_lib = struct(
-    attrs = _ATTRS,
-    implementation = _impl,
+    attrs = _NPM_PACKAGE_ATTRS,
+    implementation = _npm_package_impl,
     provides = [DefaultInfo, NpmPackageInfo],
 )
 
-npm_package = rule(
-    doc = _DOC,
+_npm_package = rule(
+    doc = _NPM_PACKAGE_DOC,
     implementation = npm_package_lib.implementation,
     attrs = npm_package_lib.attrs,
     provides = npm_package_lib.provides,
     toolchains = ["@aspect_bazel_lib//lib:copy_to_directory_toolchain_type"],
 )
+
+_npm_package_files = rule(
+    implementation = _npm_package_files_impl,
+    attrs = _NPM_PACKAGE_FILES_ATTRS,
+)
+
+def npm_package(
+        name,
+        include_sources = True,
+        include_transitive_sources = True,
+        include_declarations = True,
+        include_transitive_declarations = True,
+        # TODO(2.0): flip include_runfiles default to False
+        include_runfiles = True,
+        **kwargs):
+    """TODO
+
+    Args:
+        name: Unique name for this target.
+
+        include_sources: When True, `sources` from `JsInfo` providers in data targets are included in the list of available files to copy.
+
+        include_transitive_sources: When True, `transitive_sources` from `JsInfo` providers in data targets are included in the list of available files to copy.
+
+        include_declarations: When True, `declarations` from `JsInfo` providers in data targets are included in the list of available files to copy.
+
+        include_transitive_declarations: When True, `transitive_declarations` from `JsInfo` providers in data targets are included in the list of available files to copy.
+
+        include_runfiles: When True, default runfiles from `srcs` targets are included in the list of available files to copy.
+
+            This may be needed in a few cases:
+
+            - to work-around issues with rules that don't provide everything needed in sources, transitive_sources, declarations & transitive_declarations
+            - to depend on the runfiles targets that don't use JsInfo
+
+            NB: The default value will be flipped to False in the next major release as runfiles are not needed in the general case
+            and adding them to the list of files available to copy can add noticeable overhead to the analysis phase in a large
+            repository with many npm_package targets.
+
+        **kwargs: Other attributes
+    """
+
+    srcs = kwargs.pop("srcs", [])
+    files_target = None
+    if include_sources or include_transitive_sources or include_declarations or include_transitive_declarations or include_runfiles:
+        files_target = "{}_files".format(name)
+        _npm_package_files(
+            name = files_target,
+            srcs = srcs,
+            include_sources = include_sources,
+            include_transitive_sources = include_transitive_sources,
+            include_declarations = include_declarations,
+            include_transitive_declarations = include_transitive_declarations,
+            include_runfiles = include_runfiles,
+            # Always tag the target manual since we should only build it when the final target is built.
+            tags = kwargs.get("tags", []) + ["manual"],
+            # Always propagate the testonly attribute
+            testonly = kwargs.get("testonly", False),
+        )
+
+    if files_target:
+        srcs = srcs + [files_target]
+    _npm_package(name = name, srcs = srcs, **kwargs)
 
 def stamped_package_json(name, stamp_var, **kwargs):
     """Convenience wrapper to set the "version" property in package.json with the git tag.
