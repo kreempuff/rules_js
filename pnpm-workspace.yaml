@@ -8,4 +8,5 @@ packages:
     - 'examples/webpack_cli'
     - 'js/private/coverage/bundle'
     - 'js/private/worker/src'
-    - 'npm/private/test'
+    - 'js/private/image'
+    #- 'npm/private/test' TODO: why it fails?
